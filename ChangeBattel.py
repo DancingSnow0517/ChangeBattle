@@ -2,6 +2,7 @@ from mcdreforged.api.all import *
 import os
 import json
 import time
+import random
 
 PLUGIN_METADATA = {
     'id': 'changebattle',
@@ -37,10 +38,11 @@ playerList = []
 
 default_config = {
     "Center": [0, 0],
-    "Size": 1000,
+    "Size": 2000,
     "NextSize": [0.55, 0.7],
     "time": 600,
     "NextTime": 0.7,
+    "SaveTime": 0.6,
     "rounds": 7,
     "RandomCenter": False,
     "minimum_permission_level": {
@@ -54,19 +56,69 @@ default_config = {
 }
 
 
+def infoUpdata(server):
+    pass
+
+
+def change(server):
+    pass
+
+
 @new_thread('ChangeBattle')
 def main(server: ServerInterface):
     global game_status
-    # init
+    # 玩家初始化
     server.execute('clear @a')
     server.execute(
-        'give @a minecraft:stone_sword{Enchantments:[{id:"minecraft:sharpness",lvl:2},{id:"minecraft:unbreaking",lvl:1}]} 1')
+        'give @a minecraft:stone_sword{Enchantments:[{id:"minecraft:unbreaking",lvl:1}]} 1')
     server.execute(
         'give @a minecraft:stone_pickaxe{Enchantments:[{id:"minecraft:efficiency",lvl:2},{id:"minecraft:unbreaking",lvl:1}]} 1')
     server.execute(
         'give @a minecraft:stone_axe{Enchantments:[{id:"minecraft:efficiency",lvl:2},{id:"minecraft:unbreaking",lvl:1}]} 1')
     server.execute(
         'give @a minecraft:stone_shovel{Enchantments:[{id:"minecraft:efficiency",lvl:2},{id:"minecraft:unbreaking",lvl:1}]} 1')
+    server.execute('effect give @a minecraft:saturation 1 255')
+    server.execute('effect give @a minecraft:regeneration 1 255')
+    server.execute('gamemode survival @a')
+
+    # 世界初始化
+    if cfg["RandomCenter"]:
+        x = random.randint(-100000, 100000)
+        z = random.randint(-100000, 100000)
+    else:
+        x = cfg["Center"][0]
+        z = cfg["Center"][1]
+    server.execute(f'worldborder center {x} {z}')
+    server.execute(f'spreadplayers {x} {z} {cfg["Size"] * 0.25} {cfg["Size"] * 0.45} false @a')
+
+    now_size = cfg["Size"]
+    now_time = cfg["time"]
+    now_round = 1
+    t = now_time
+    server.execute(f'worldborder set {now_size} 0')
+    while game_status:
+        time.sleep(1)
+        t -= 1
+        if t in range(now_time*cfg["SaveTime"], now_time):
+            infoUpdata(server)
+        elif t in range(6, now_time*cfg["SaveTime"]):
+            infoUpdata(server)
+        elif t in range(1, 6):
+            cb_tell(server, '还有 {} 秒互换')
+            server.execute('execute at @a run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 0.5')
+        elif t == 0:
+            cb_tell(server, '正在互换！')
+            server.execute('execute at @a run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 1')
+            change(server)
+
+            now_round += 1
+
+            n_min = int(now_size * cfg["NextSize"][0])
+            n_max = int(now_size * cfg["NextSize"][1])
+            now_size = random.randint(n_min, n_max)
+
+            now_time = int(now_time * cfg["NextTime"])
+            t = now_time
 
 
 def cb_tell(server: ServerInterface, msg):
@@ -121,6 +173,9 @@ def start(Source: CommandSource):
         cb_tell(server, '准备开始游戏')
         api = server.get_plugin_instance('minecraft_data_api')
         amount, limit, playerList = api.get_server_player_list()
+        if amount <= 1:
+            cb_tell(server, '人数不足，无法开始！')
+            return 
         string = ''
         for i in playerList:
             string += f'{i}, '
