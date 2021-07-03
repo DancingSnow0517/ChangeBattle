@@ -119,6 +119,12 @@ def confirm(Source: CommandSource):
     global status
     server = Source.get_server()
     if confirm_statu:
+        cb_tell(server, '3')
+        time.sleep(1)
+        cb_tell(server, '2')
+        time.sleep(1)
+        cb_tell(server, '1')
+        time.sleep(1)
         cb_tell(server, '游戏开始')
         status = True
         main(server)
