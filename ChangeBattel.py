@@ -13,9 +13,10 @@ PLUGIN_METADATA = {
         'DancingSnow'
     ],
     'dependencies': {
-        'minecraft_data_api': '*'
+        'minecraft_data_api': '*',
+        'more_apis': '>=2.0'
     },
-    'link': 'https://github.com/MCDReforged/MinecraftDataAPI'
+    'link': 'https://github.com/DancingSnow0517/ChangeBattle'
 }
 
 prefix = '!!CB'
