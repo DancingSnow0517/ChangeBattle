@@ -14,7 +14,7 @@ PLUGIN_METADATA = {
     ],
     'dependencies': {
         'minecraft_data_api': '*',
-        'more_apis': '>=2.0'
+        'more_apis': '*'
     },
     'link': 'https://github.com/DancingSnow0517/ChangeBattle'
 }
