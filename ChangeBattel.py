@@ -22,17 +22,17 @@ ConfigFile = 'config/ChangeBattle.json'
 cfg = {}
 confirm_statu = False
 
-status = False
+game_status = False
 playerList = []
 '''
-!!CB 显示本消息
-!!CB start 开始游戏
-!!CB options 显示可选选项
-!!CB status 显示游戏状态
-!!CB stop 强制停止当前游戏
-!!CB set [选项]来设置各种选项
-!!CB reload 重载配置文件
-!!CB team 队伍模式
+!!CB 显示本消息 --
+!!CB start 开始游戏 -- 
+!!CB options 显示可选选项 
+!!CB status 显示游戏状态 --
+!!CB stop 强制停止当前游戏 --
+!!CB set [选项]来设置各种选项 
+!!CB reload 重载配置文件 --
+!!CB team 队伍模式 ++
 '''
 
 default_config = {
@@ -56,7 +56,7 @@ default_config = {
 
 @new_thread('ChangeBattle')
 def main(server: ServerInterface):
-    global status
+    global game_status
     # init
     server.execute('clear @a')
     server.execute(
@@ -70,7 +70,7 @@ def main(server: ServerInterface):
 
 
 def cb_tell(server: ServerInterface, msg):
-    server.say(f'§d[{PLUGIN_METADATA.get("name")}]§a{msg}')
+    server.say(f'§d[{PLUGIN_METADATA.get("name")}]§r{msg}')
 
 
 def death_message(server: ServerInterface, death_message):
@@ -91,6 +91,19 @@ def config(mode, js=None):
             json.dump(js, f, indent=4)
 
 
+def status(Source: CommandSource):
+    server = Source.get_server()
+    if not game_status:
+        cb_tell(server, '游戏未运行')
+        return
+    alive = ''
+    for i in playerList:
+        alive += f'{i}, '
+    cb_tell(server, '=====Change Battle status=====')
+    server.say(alive)
+    server.say(f'共 {len(playerList)} 人存活')
+
+
 def print_help_msg(Source: CommandSource):
     Source.reply(
         RText('Test').set_color(RColor.aqua).set_hover_text('单击执行').set_click_event(RAction.run_command, '!!CB'))
@@ -101,6 +114,9 @@ def start(Source: CommandSource):
     global playerList
     global confirm_statu
     server = Source.get_server()
+    if game_status:
+        cb_tell(server, RText('游戏已经开始！').set_color(RColor.red))
+        return
     if server.is_server_startup():
         cb_tell(server, '准备开始游戏')
         api = server.get_plugin_instance('minecraft_data_api')
@@ -114,9 +130,19 @@ def start(Source: CommandSource):
         confirm_statu = True
 
 
+def stop(Source: CommandSource):
+    global game_status
+    server = Source.get_server()
+    if game_status:
+        cb_tell(server, '游戏已强制停止')
+        game_status = False
+    else:
+        cb_tell(server, '游戏没有在运行')
+
+
 def confirm(Source: CommandSource):
     global confirm_statu
-    global status
+    global game_status
     server = Source.get_server()
     if confirm_statu:
         cb_tell(server, '3')
@@ -126,7 +152,7 @@ def confirm(Source: CommandSource):
         cb_tell(server, '1')
         time.sleep(1)
         cb_tell(server, '游戏开始')
-        status = True
+        game_status = True
         main(server)
         confirm_statu = False
     else:
@@ -159,7 +185,9 @@ def register_command(server: ServerInterface):
             then(get_literal_node('start').runs(start).
                  then(Literal('confirm').runs(confirm)).
                  then(Literal('abort').runs(abort))).
-            then(get_literal_node('reload').runs(reload)))
+            then(get_literal_node('reload').runs(reload)).
+            then(get_literal_node('stop').runs(stop)).
+            then(get_literal_node('status').runs(status)))
 
 
 def on_load(server: ServerInterface, old):
