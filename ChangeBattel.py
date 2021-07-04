@@ -52,14 +52,13 @@ default_config = {
     "Center": [0, 0],
     "Size": 2000,
     "NextSize": [0.55, 0.7],
-    "time": 600,
+    "Time": 300,
     "NextTime": 0.7,
     "SaveTime": 0.6,
     "rounds": 7,
     "RandomCenter": False,
     "minimum_permission_level": {
         'start': 0,
-        'options': 2,
         'status': 0,
         'stop': 3,
         'set': 2,
@@ -71,6 +70,8 @@ default_config = {
 def game_stoped(server: ServerInterface):
     server.execute('scoreboard objectives remove INFO')
     server.execute('bossbar remove minecraft:battle')
+    server.execute(f'execute in minecraft:overworld run worldborder set 1000000 0')
+    server.execute(f'execute in minecraft:the_nether run worldborder set 1000000 0')
 
 
 def infoUpdata(server, game_time, center, rounds, left_time, left_players, size):
@@ -206,7 +207,7 @@ def main(server: ServerInterface):
     server.execute(f'scoreboard players set centerZ vars {z}')
 
     now_size = cfg["Size"]
-    now_time = cfg["time"]
+    now_time = cfg["Time"]
     now_round = 1
     t = now_time
     game_start_time = time.time()
@@ -223,12 +224,15 @@ def main(server: ServerInterface):
             continue
         t -= 1
         infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList), now_size)
-        if t in range(int(now_time * (1-cfg["SaveTime"])), now_time):
-            BossBar(server, t - int(now_time * (1-cfg["SaveTime"])), int(now_time * cfg["SaveTime"]), '{} 秒后缩圈', 'green')
-        elif t in range(6, int(now_time * (1-cfg["SaveTime"]))):
-            if t == (int(now_time * (1-cfg["SaveTime"])) - 1):
-                server.execute(f'execute in minecraft:overworld run worldborder set {next_size} {now_time - int(now_time * cfg["SaveTime"])}')
-                server.execute(f'execute in minecraft:the_nether run worldborder set {int(next_size/8)} {now_time - int(now_time * cfg["SaveTime"])}')
+        if t in range(int(now_time * (1 - cfg["SaveTime"])), now_time):
+            BossBar(server, t - int(now_time * (1 - cfg["SaveTime"])), int(now_time * cfg["SaveTime"]), '{} 秒后缩圈',
+                    'green')
+        elif t in range(6, int(now_time * (1 - cfg["SaveTime"]))):
+            if t == (int(now_time * (1 - cfg["SaveTime"])) - 1):
+                server.execute(
+                    f'execute in minecraft:overworld run worldborder set {next_size} {now_time - int(now_time * cfg["SaveTime"])}')
+                server.execute(
+                    f'execute in minecraft:the_nether run worldborder set {int(next_size / 8)} {now_time - int(now_time * cfg["SaveTime"])}')
             BossBar(server, t, int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
         elif t in range(1, 6):
             cb_tell(server, '还有 {} 秒互换')
@@ -265,6 +269,7 @@ def death_message(server: ServerInterface, message):
             cb_tell(server, '游戏结束')
             cb_tell(server, f'玩家 {playerList[0]} 获得胜利')
             game_status = False
+            game_stoped(server)
 
 
 def config(mode, js=None):
@@ -330,6 +335,7 @@ def stop(Source: CommandSource):
     if game_status:
         cb_tell(server, '游戏已强制停止')
         game_status = False
+        game_stoped(server)
     else:
         cb_tell(server, '游戏没有在运行')
 
@@ -349,6 +355,7 @@ def confirm(Source: CommandSource):
         game_status = True
         main(server)
         confirm_statu = False
+        game_stoped(server)
     else:
         cb_tell(server, '游戏还未准备')
 
@@ -369,6 +376,294 @@ def reload(Source: CommandSource):
     cb_tell(Source.get_server(), '配置文件重载成功')
 
 
+def options(Source: CommandSource):
+    """
+    当前中心为 {} {} [✎]
+    当前大小为 {} [✎]
+    下一轮时间为 {} [✎]
+    下一轮大小范围 {} {} [✎]
+    当前为 {}
+    下一轮时间 {} [✎]
+    安全时间 {} [✎]
+    随机中心 [ON] [OFF]
+    """
+    player = Source.player
+    server = Source.get_server()
+    # 设置中心
+    text = [
+        {
+            "text": f"当前中心为 §bX:{cfg['Center'][0]}, Z:{cfg['Center'][1]} §r"
+        },
+        {
+            "text": "[✎]",
+            "clickEvent": {
+                "action": "suggest_command",
+                "value": f"{prefix} set Center <X> <Z>"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击修改"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    # 设置大小
+    text = [
+        {
+            "text": f"当前大小为 §b{cfg['Size']}§r 格 "
+        },
+        {
+            "text": "[✎] ",
+            "clickEvent": {
+                "action": "suggest_command",
+                "value": f"{prefix} set Size <size>"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击修改"
+            },
+            "color": "green"
+        },
+        {
+            "text": "[1000] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set Size 1000"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将大小设置为 1000"
+            },
+            "color": "yellow"
+        },
+        {
+            "text": "[2000] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set Size 2000"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将大小设置为 2000"
+            },
+            "color": "yellow"
+        },
+        {
+            "text": "[3000] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set Size 3000"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将大小设置为 3000"
+            },
+            "color": "yellow"
+        },
+        {
+            "text": "[5000] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set Size 5000"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将大小设置为 5000"
+            },
+            "color": "yellow"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    # 设置下一个圈大小
+    text = [
+        {
+            "text": f"当前下个圈大小 §b[{cfg['NextSize'][0]} - {cfg['NextSize'][1]}]§r "
+        },
+        {
+            "text": "[✎]",
+            "clickEvent": {
+                "action": "suggest_command",
+                "value": f"{prefix} set NextSize <min> <max>"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击修改"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    text = [
+        {
+            "text": "Tips: “min”和“max”中填写0-1的小数，1代表大小不会变化",
+            "color": "dark_red"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    # 设置时间
+    text = [
+        {
+            "text": f"当前时间为 §b{cfg['Time']}§r 秒 "
+        },
+        {
+            "text": "[✎] ",
+            "clickEvent": {
+                "action": "suggest_command",
+                "value": f"{prefix} set time <time>"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击修改"
+            },
+            "color": "green"
+        },
+        {
+            "text": "[300] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set time 300"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将时间设置为 300"
+            },
+            "color": "yellow"
+        },
+        {
+            "text": "[600] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set time 600"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将时间设置为 600"
+            },
+            "color": "yellow"
+        },
+        {
+            "text": "[1200] ",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set time 1200"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击将时间设置为 1200"
+            },
+            "color": "yellow"
+        },
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    # 设置下一轮时间
+    text = [
+        {
+            "text": f"下一轮时间为 §b[{cfg['NextTime']}]§r "
+        },
+        {
+            "text": "[✎]",
+            "clickEvent": {
+                "action": "suggest_command",
+                "value": f"{prefix} set NextTime <NextTime>"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击修改"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    text = [
+        {
+            "text": "Tips: “NextTime”中填写0-1的小数，1代表时间不会变化",
+            "color": "dark_red"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    # 设置安全时间
+    text = [
+        {
+            "text": f"当前安全区时间 §b[{cfg['SaveTime']}]§r "
+        },
+        {
+            "text": "[✎]",
+            "clickEvent": {
+                "action": "suggest_command",
+                "value": f"{prefix} set SaveTime <SaveTime>"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击修改"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    text = [
+        {
+            "text": "Tips: “SaveTime”中填写0-1的小数，1代表全是安全时间，缩圈会瞬间进行",
+            "color": "dark_red"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+    # 随机中心
+    if cfg["RandomCenter"]:
+        text = [
+            {
+                "text": "随机中心开关 "
+            },
+            {
+                "text": "[ON] ",
+                "hoverEvent": {
+                    "action": "show_text",
+                    "value": "已开启"
+                },
+                "color": "gray"
+            },
+            {
+                "text": "[OFF]",
+                "clickEvent": {
+                    "action": "run_command",
+                    "value": f"{prefix} set RandomCenter False"
+                },
+                "hoverEvent": {
+                    "action": "show_text",
+                    "value": "单击修改"
+                },
+                "color": "green"
+            }
+        ]
+    else:
+        text = [
+            {
+                "text": "随机中心开关 "
+            },
+            {
+                "text": "[ON] ",
+                "clickEvent": {
+                    "action": "run_command",
+                    "value": f"{prefix} set RandomCenter True"
+                },
+                "hoverEvent": {
+                    "action": "show_text",
+                    "value": "单击修改"
+                },
+                "color": "red"
+            },
+            {
+                "text": "[OFF]",
+                "hoverEvent": {
+                    "action": "show_text",
+                    "value": "已关闭"
+                },
+                "color": "gray"
+            }
+        ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+
 def register_command(server: ServerInterface):
     def get_literal_node(literal):
         lvl = cfg['minimum_permission_level'].get(literal, 0)
@@ -382,7 +677,7 @@ def register_command(server: ServerInterface):
             then(get_literal_node('reload').runs(reload)).
             then(get_literal_node('stop').runs(stop)).
             then(get_literal_node('status').runs(status)).
-            then(get_literal_node('options')))
+            then(get_literal_node('set').runs(options)))
 
 
 def on_load(server: ServerInterface, old):
