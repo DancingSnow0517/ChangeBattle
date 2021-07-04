@@ -68,41 +68,59 @@ default_config = {
 }
 
 
-def infoUpdata(server, game_time, center, rounds, left_time, left_players):
+def game_stoped(server: ServerInterface):
+    server.execute('scoreboard objectives remove INFO')
+    server.execute('bossbar remove minecraft:battle')
+
+
+def infoUpdata(server, game_time, center, rounds, left_time, left_players, size):
     global Last_info
     """
     ======INFO======
     游戏已运行{game_time}秒
     当前世界中心{center[0]},[center[1]]
+    边界大小
     目前是第{rounds}回合
     距离下次交换还有{left_time}秒
     还有{left_players}名玩家存活
     """
-    for i in Last_info:
-        server.execute(f'scoreboard players reset {i}')
-    Last_info = []
-    for i in range(5):
-        if i == 4:
-            INFO = f'当前世界中心§b{center[0]}§r，§b{[center[1]]}'
-            Last_info.append(INFO)
+    for i in range(6):
+        if i == 5:
+            INFO = f'当前世界中心§b{center[0]}§r，§b{center[1]}'
+            if Last_info[i] != INFO:
+                server.execute(f'scoreboard players reset {Last_info[i]}')
             server.execute(f'scoreboard players set {INFO} INFO {i}')
+            Last_info[i] = INFO
+        elif i == 4:
+            INFO = f'当前边界大小§b{size}§r格'
+            if Last_info[i] != INFO:
+                server.execute(f'scoreboard players reset {Last_info[i]}')
+            server.execute(f'scoreboard players set {INFO} INFO {i}')
+            Last_info[i] = INFO
         elif i == 3:
             INFO = f'距离下次交换还有§b{left_time}§r秒'
-            Last_info.append(INFO)
+            if Last_info[i] != INFO:
+                server.execute(f'scoreboard players reset {Last_info[i]}')
             server.execute(f'scoreboard players set {INFO} INFO {i}')
+            Last_info[i] = INFO
         elif i == 2:
             INFO = f'目前是第§b{rounds}§r回合'
-            Last_info.append(INFO)
+            if Last_info[i] != INFO:
+                server.execute(f'scoreboard players reset {Last_info[i]}')
             server.execute(f'scoreboard players set {INFO} INFO {i}')
+            Last_info[i] = INFO
         elif i == 1:
-            INFO = f'游戏已运行§b{game_time}§r秒'
-            Last_info.append(INFO)
+            INFO = f'游戏已运行§b{int(game_time)}§r秒'
+            if Last_info[i] != INFO:
+                server.execute(f'scoreboard players reset {Last_info[i]}')
             server.execute(f'scoreboard players set {INFO} INFO {i}')
+            Last_info[i] = INFO
         elif i == 0:
             INFO = f'还有§b{left_players}§r名玩家存活'
-            Last_info.append(INFO)
+            if Last_info[i] != INFO:
+                server.execute(f'scoreboard players reset {Last_info[i]}')
             server.execute(f'scoreboard players set {INFO} INFO {i}')
-    pass
+            Last_info[i] = INFO
 
 
 def player_rand(array):
@@ -149,6 +167,7 @@ def BossBar(server: ServerInterface, Left_time, Max_time, text, color):
 def main(server: ServerInterface):
     global game_status
     global now_round
+    global Last_info
     # 玩家初始化
     server.execute('clear @a')
     server.execute(
@@ -167,7 +186,9 @@ def main(server: ServerInterface):
     server.execute('bossbar add battle {"text":"ChangeBattle"}')
     server.execute('bossbar set minecraft:battle players @a')
 
-    server.execute('scoreboard objectives add INFO dummy {"text":"======INFO======","color":"light_purple"}')
+    server.execute('scoreboard objectives remove INFO')
+    server.execute('scoreboard objectives add INFO dummy {"text":"========INFO========","color":"light_purple"}')
+    server.execute('scoreboard objectives setdisplay sidebar INFO')
 
     # 世界初始化
     if cfg["RandomCenter"]:
@@ -176,7 +197,9 @@ def main(server: ServerInterface):
     else:
         x = cfg["Center"][0]
         z = cfg["Center"][1]
-    server.execute(f'worldborder center {x} {z}')
+    server.execute(f'execute in minecraft:overworld run worldborder center {x} {z}')
+    server.execute(f'execute in minecraft:the_nether run worldborder center {x} {z}')
+    server.execute('execute in minecraft:overworld as @a run tp 0 100 0')
     server.execute(f'spreadplayers {x} {z} {cfg["Size"] * 0.25} {cfg["Size"] * 0.45} false @a')
 
     server.execute(f'scoreboard players set centerX vars {x}')
@@ -187,38 +210,40 @@ def main(server: ServerInterface):
     now_round = 1
     t = now_time
     game_start_time = time.time()
-    server.execute(f'worldborder set {now_size} 0')
+    server.execute(f'execute in minecraft:overworld run worldborder set {now_size} 0')
+    server.execute(f'execute in minecraft:the_nether run worldborder set {now_size} 0')
     n_min = int(now_size * cfg["NextSize"][0])
     n_max = int(now_size * cfg["NextSize"][1])
     next_size = random.randint(n_min, n_max)
+    Last_info = [0, 1, 2, 3, 4, 5]
     while game_status:
         time.sleep(1)
+        if now_size <= 128:
+            server.execute('effect give @a minecraft:glowing 20')
+            continue
         t -= 1
-        infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList))
-        if t in range(int(now_time * cfg["SaveTime"]), now_time):
-            BossBar(server, t - int(now_time * cfg["SaveTime"]), now_time, '{} 秒后缩圈', 'green')
-        elif t in range(6, int(now_time * cfg["SaveTime"])):
-            if t == (int(now_time * cfg["SaveTime"]) - 1):
-                server.execute(f'worldborder set {next_size} {now_time - int(now_time * cfg["SaveTime"])}')
-            BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
+        infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList), now_size)
+        if t in range(int(now_time * (1-cfg["SaveTime"])), now_time):
+            BossBar(server, t - int(now_time * (1-cfg["SaveTime"])), int(now_time * cfg["SaveTime"]), '{} 秒后缩圈', 'green')
+        elif t in range(6, int(now_time * (1-cfg["SaveTime"]))):
+            if t == (int(now_time * (1-cfg["SaveTime"])) - 1):
+                server.execute(f'execute in minecraft:overworld run worldborder set {next_size} {now_time - int(now_time * cfg["SaveTime"])}')
+                server.execute(f'execute in minecraft:the_nether run worldborder set {int(next_size/8)} {now_time - int(now_time * cfg["SaveTime"])}')
+            BossBar(server, t, int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
         elif t in range(1, 6):
             cb_tell(server, '还有 {} 秒互换')
-            BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
+            BossBar(server, t, int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
             server.execute('execute at @a run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 0.5')
         elif t == 0:
             cb_tell(server, '正在互换！')
-            BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
+            BossBar(server, t, int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
             server.execute('execute at @a run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 1')
             change(server)
-
             now_round += 1
-
             now_size = next_size
-
             n_min = int(now_size * cfg["NextSize"][0])
             n_max = int(now_size * cfg["NextSize"][1])
             next_size = random.randint(n_min, n_max)
-
             now_time = int(now_time * cfg["NextTime"])
             t = now_time
 
@@ -229,11 +254,17 @@ def cb_tell(server: ServerInterface, msg):
 
 def death_message(server: ServerInterface, message):
     global playerList
+    global game_status
     player = message.split(' ')[0]
     if game_status:
         if player in playerList:
             cb_tell(server, f'玩家 {player} 出局')
             playerList.remove(player)
+            server.execute(f'gamemode spectator {player}')
+        if len(playerList) <= 1:
+            cb_tell(server, '游戏结束')
+            cb_tell(server, f'玩家 {playerList[0]} 获得胜利')
+            game_status = False
 
 
 def config(mode, js=None):
@@ -350,7 +381,8 @@ def register_command(server: ServerInterface):
                  then(Literal('abort').runs(abort))).
             then(get_literal_node('reload').runs(reload)).
             then(get_literal_node('stop').runs(stop)).
-            then(get_literal_node('status').runs(status)))
+            then(get_literal_node('status').runs(status)).
+            then(get_literal_node('options')))
 
 
 def on_load(server: ServerInterface, old):
