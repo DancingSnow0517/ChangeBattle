@@ -25,7 +25,9 @@ cfg = {}
 confirm_statu = False
 
 game_status = False
+now_round = 0
 playerList = []
+Last_info = []
 '''
 !!CB 显示本消息 --
 !!CB start 开始游戏 -- 
@@ -57,7 +59,40 @@ default_config = {
 }
 
 
-def infoUpdata(server):
+def infoUpdata(server, game_time, center, rounds, left_time, left_players):
+    global Last_info
+    """
+    ======INFO======
+    游戏已运行{game_time}秒
+    当前世界中心{center[0]},[center[1]]
+    目前是第{rounds}回合
+    距离下次交换还有{left_time}秒
+    还有{left_players}名玩家存活
+    """
+    for i in Last_info:
+        server.execute(f'scoreboard players reset {i}')
+    Last_info = []
+    for i in range(5):
+        if i == 4:
+            INFO = f'当前世界中心§b{center[0]}§r，§b{[center[1]]}'
+            Last_info.append(INFO)
+            server.execute(f'scoreboard players set {INFO} INFO {i}')
+        elif i == 3:
+            INFO = f'距离下次交换还有§b{left_time}§r秒'
+            Last_info.append(INFO)
+            server.execute(f'scoreboard players set {INFO} INFO {i}')
+        elif i == 2:
+            INFO = f'目前是第§b{rounds}§r回合'
+            Last_info.append(INFO)
+            server.execute(f'scoreboard players set {INFO} INFO {i}')
+        elif i == 1:
+            INFO = f'游戏已运行§b{game_time}§r秒'
+            Last_info.append(INFO)
+            server.execute(f'scoreboard players set {INFO} INFO {i}')
+        elif i == 0:
+            INFO = f'还有§b{left_players}§r名玩家存活'
+            Last_info.append(INFO)
+            server.execute(f'scoreboard players set {INFO} INFO {i}')
     pass
 
 
@@ -65,9 +100,21 @@ def change(server):
     pass
 
 
+def BossBar(server: ServerInterface, Left_time, Max_time, text, color):
+    raw = {
+        "text": text.format(Left_time),
+        "color": color
+    }
+    server.execute(f'bossbar set minecraft:battle color {color}')
+    server.execute(f'bossbar set minecraft:battle max {Max_time}')
+    server.execute(f'bossbar set minecraft:battle name {json.dumps(raw)}')
+    server.execute(f'bossbar set minecraft:battle value {Left_time}')
+
+
 @new_thread('ChangeBattle')
 def main(server: ServerInterface):
     global game_status
+    global now_round
     # 玩家初始化
     server.execute('clear @a')
     server.execute(
@@ -82,6 +129,12 @@ def main(server: ServerInterface):
     server.execute('effect give @a minecraft:regeneration 1 255')
     server.execute('gamemode survival @a')
 
+    server.execute('bossbar remove minecraft:battle')
+    server.execute('bossbar add battle {"text":"ChangeBattle"}')
+    server.execute('bossbar set minecraft:battle players @a')
+
+    server.execute('scoreboard objectives add INFO dummy {"text":"======INFO======","color":"light_purple"}')
+
     # 世界初始化
     if cfg["RandomCenter"]:
         x = random.randint(-100000, 100000)
@@ -92,23 +145,31 @@ def main(server: ServerInterface):
     server.execute(f'worldborder center {x} {z}')
     server.execute(f'spreadplayers {x} {z} {cfg["Size"] * 0.25} {cfg["Size"] * 0.45} false @a')
 
+    server.execute(f'scoreboard players set centerX vars {x}')
+    server.execute(f'scoreboard players set centerZ vars {z}')
+
     now_size = cfg["Size"]
     now_time = cfg["time"]
     now_round = 1
     t = now_time
+    game_start_time = time.time()
     server.execute(f'worldborder set {now_size} 0')
     while game_status:
         time.sleep(1)
         t -= 1
-        if t in range(now_time*cfg["SaveTime"], now_time):
+        if t in range(int(now_time * cfg["SaveTime"]), now_time):
+            infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList))
+            BossBar(server, t - int(now_time * cfg["SaveTime"]), now_time, '{} 秒后缩圈', 'green')
+        elif t in range(6, int(now_time * cfg["SaveTime"])):
             infoUpdata(server)
-        elif t in range(6, now_time*cfg["SaveTime"]):
-            infoUpdata(server)
+            BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
         elif t in range(1, 6):
             cb_tell(server, '还有 {} 秒互换')
+            BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
             server.execute('execute at @a run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 0.5')
         elif t == 0:
             cb_tell(server, '正在互换！')
+            BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
             server.execute('execute at @a run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 1')
             change(server)
 
@@ -126,8 +187,11 @@ def cb_tell(server: ServerInterface, msg):
     server.say(f'§d[{PLUGIN_METADATA.get("name")}]§r{msg}')
 
 
-def death_message(server: ServerInterface, death_message):
-    server.say(death_message)
+def death_message(server: ServerInterface, message):
+    global playerList
+    player = message.split(' ')[0]
+    cb_tell(server, f'玩家 {player} 出局')
+    playerList.remove(player)
 
 
 def config(mode, js=None):
@@ -155,6 +219,7 @@ def status(Source: CommandSource):
     cb_tell(server, '=====Change Battle status=====')
     server.say(alive)
     server.say(f'共 {len(playerList)} 人存活')
+    server.say(f'目前是第 {now_round} 个圈')
 
 
 def print_help_msg(Source: CommandSource):
@@ -176,7 +241,7 @@ def start(Source: CommandSource):
         amount, limit, playerList = api.get_server_player_list()
         if amount <= 1:
             cb_tell(server, '人数不足，无法开始！')
-            return 
+            return
         string = ''
         for i in playerList:
             string += f'{i}, '
