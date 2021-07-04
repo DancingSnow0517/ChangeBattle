@@ -411,7 +411,7 @@ def options(Source: CommandSource):
     # 设置大小
     text = [
         {
-            "text": f"当前大小为 §b{cfg['Size']}§r 格 "
+            "text": f"当前边界大小为 §b{cfg['Size']}§r 格 "
         },
         {
             "text": "[✎] ",
@@ -478,7 +478,7 @@ def options(Source: CommandSource):
     # 设置下一个圈大小
     text = [
         {
-            "text": f"当前下个圈大小 §b[{cfg['NextSize'][0]} - {cfg['NextSize'][1]}]§r "
+            "text": f"当前下个边界大小 §b[{cfg['NextSize'][0]} - {cfg['NextSize'][1]}]§r "
         },
         {
             "text": "[✎]",
@@ -510,7 +510,7 @@ def options(Source: CommandSource):
             "text": "[✎] ",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set time <time>"
+                "value": f"{prefix} set Time <time>"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -522,7 +522,7 @@ def options(Source: CommandSource):
             "text": "[300] ",
             "clickEvent": {
                 "action": "run_command",
-                "value": f"{prefix} set time 300"
+                "value": f"{prefix} set Time 300"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -534,7 +534,7 @@ def options(Source: CommandSource):
             "text": "[600] ",
             "clickEvent": {
                 "action": "run_command",
-                "value": f"{prefix} set time 600"
+                "value": f"{prefix} set Time 600"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -546,7 +546,7 @@ def options(Source: CommandSource):
             "text": "[1200] ",
             "clickEvent": {
                 "action": "run_command",
-                "value": f"{prefix} set time 1200"
+                "value": f"{prefix} set Time 1200"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -585,7 +585,7 @@ def options(Source: CommandSource):
     # 设置安全时间
     text = [
         {
-            "text": f"当前安全区时间 §b[{cfg['SaveTime']}]§r "
+            "text": f"当前安全时间 §b[{cfg['SaveTime']}]§r "
         },
         {
             "text": "[✎]",
@@ -664,6 +664,67 @@ def options(Source: CommandSource):
     server.execute(f'tellraw {player} {json.dumps(text)}')
 
 
+def setCenter(Source: CommandSource, msg):
+    global cfg
+    cfg["Center"][0] = msg["centerX"]
+    cfg["Center"][1] = msg["centerZ"]
+    config('w', cfg)
+    Source.reply(f'中心点已设置为 §bX:{cfg["Center"][0]}, Z:{cfg["Center"][1]}')
+
+
+def setSize(Source: CommandSource, msg):
+    global cfg
+    cfg["Size"] = msg["Size"]
+    config('w', cfg)
+    Source.reply(f'边界大小已设置为 §b{cfg["Size"]}')
+
+
+def setNextSize(Source: CommandSource, msg):
+    global cfg
+    if msg['Next_min'] <= msg['Next_max']:
+        cfg["NextSize"][0] = msg['Next_min']
+        cfg["NextSize"][1] = msg['Next_max']
+        config('w', cfg)
+        Source.reply(f'边界大小已设置为 §b[{cfg["NextSize"][0]} - {cfg["NextSize"][1]}]')
+    else:
+        Source.reply(f'§c{msg["Next_min"]} 应小于 {msg["Next_max"]}')
+
+
+def setTime(Source: CommandSource, msg):
+    global cfg
+    cfg["Time"] = msg["Time"]
+    config('w', cfg)
+    Source.reply(f'时间已设置为 §b{cfg["Time"]}')
+
+
+def setNextTime(Source: CommandSource, msg):
+    global cfg
+    cfg["NextTime"] = msg["NextTime"]
+    config('w', cfg)
+    Source.reply(f'下一轮时间已设置为 §b[{cfg["NextTime"]}]')
+
+
+def setSaveTime(Source: CommandSource, msg):
+    global cfg
+    cfg["SaveTime"] = msg["SaveTime"]
+    config('w', cfg)
+    Source.reply(f'安全时间已设置为 §b[{cfg["NextTime"]}]')
+
+
+def setRandomCenter(Source: CommandSource, msg):
+    global cfg
+    if msg["RandomCenter"] == 'True':
+        cfg["RandomCenter"] = True
+        config('w', cfg)
+        Source.reply('随机中心已开启')
+    elif msg["RandomCenter"] == 'False':
+        cfg["RandomCenter"] = False
+        config('w', cfg)
+        Source.reply('随机中心已关闭')
+    else:
+        Source.reply('§c值必须为“True”或“False”')
+
+
 def register_command(server: ServerInterface):
     def get_literal_node(literal):
         lvl = cfg['minimum_permission_level'].get(literal, 0)
@@ -677,7 +738,23 @@ def register_command(server: ServerInterface):
             then(get_literal_node('reload').runs(reload)).
             then(get_literal_node('stop').runs(stop)).
             then(get_literal_node('status').runs(status)).
-            then(get_literal_node('set').runs(options)))
+            then(get_literal_node('set').runs(options).
+                 then(Literal('Center').
+                      then(Integer('centerX').
+                           then(Integer('centerZ').runs(setCenter)))).
+                 then(Literal('Size').
+                      then(Integer('Size').runs(setSize))).
+                 then(Literal('NextSize').
+                      then(Float('Next_min').at_max(1).at_min(0).
+                           then(Float('Next_max').at_max(1).at_min(0).runs(setNextSize)))).
+                 then(Literal('Time').
+                      then(Integer('Time').at_min(0).runs(setTime))).
+                 then(Literal('NextTime').
+                      then(Float('NextTime').at_min(0).at_max(1).runs(setNextTime))).
+                 then(Literal('SaveTime').
+                      then(Float('SaveTime').at_min(0).at_max(1).runs(setSaveTime))).
+                 then(Literal('RandomCenter').
+                      then(Text('RandomCenter').runs(setRandomCenter)))))
 
 
 def on_load(server: ServerInterface, old):
@@ -686,3 +763,11 @@ def on_load(server: ServerInterface, old):
     server.register_help_message(prefix, 'Change Battle 帮助')
     server.register_event_listener('more_apis.death_message', death_message)
     register_command(server)
+    server.execute('team add ChangeBattle')
+    server.execute('team modify ChangeBattle color gold')
+    server.execute('team modify ChangeBattle nametagVisibility never')
+
+
+def on_player_joined(server: ServerInterface, player: str, info: Info):
+    server.execute(f'team join ChangeBattle {player}')
+
