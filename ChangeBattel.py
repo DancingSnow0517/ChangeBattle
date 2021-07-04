@@ -3,6 +3,7 @@ import os
 import json
 import time
 import random
+import copy
 
 PLUGIN_METADATA = {
     'id': 'changebattle',
@@ -14,9 +15,16 @@ PLUGIN_METADATA = {
     ],
     'dependencies': {
         'minecraft_data_api': '*',
-        'more_apis': '*'
+        'more_apis': '*',
+        'mcdreforged': '>=1.0.0'
     },
     'link': 'https://github.com/DancingSnow0517/ChangeBattle'
+}
+
+dim_convert = {
+    -1: 'minecraft:the_nether',
+    0: 'minecraft:overworld',
+    1: 'minecraft:the_end'
 }
 
 prefix = '!!CB'
@@ -28,6 +36,7 @@ game_status = False
 now_round = 0
 playerList = []
 Last_info = []
+after = []
 '''
 !!CB 显示本消息 --
 !!CB start 开始游戏 -- 
@@ -96,8 +105,33 @@ def infoUpdata(server, game_time, center, rounds, left_time, left_players):
     pass
 
 
+def player_rand(array):
+    rand = copy.copy(array)
+    if len(array) == 1:
+        return array
+    elif len(array) == 2:
+        rand = [array[1], array[0]]
+        return rand
+    random.seed(time.time())
+    random.shuffle(rand)
+    for i in range(len(array)):
+        if rand[i] == array[i]:
+            return player_rand(array)
+    return rand
+
+
 def change(server):
-    pass
+    global after
+    pos = {}
+    api = server.get_plugin_instance('minecraft_data_api')
+    for i in playerList:
+        pos[i] = {}
+        pos[i]["pos"] = api.get_player_coordinate(i)
+        pos[i]["dim"] = api.get_player_dimension(i)
+    after = player_rand(playerList)
+    for i in range(len(playerList)):
+        server.execute(
+            f'execute in {dim_convert[pos[after[i]]["dim"]]} run tp {playerList[i]} {pos[after[i]]["pos"][0]} {pos[after[i]]["pos"][1]} {pos[after[i]]["pos"][2]}')
 
 
 def BossBar(server: ServerInterface, Left_time, Max_time, text, color):
@@ -154,14 +188,18 @@ def main(server: ServerInterface):
     t = now_time
     game_start_time = time.time()
     server.execute(f'worldborder set {now_size} 0')
+    n_min = int(now_size * cfg["NextSize"][0])
+    n_max = int(now_size * cfg["NextSize"][1])
+    next_size = random.randint(n_min, n_max)
     while game_status:
         time.sleep(1)
         t -= 1
+        infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList))
         if t in range(int(now_time * cfg["SaveTime"]), now_time):
-            infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList))
             BossBar(server, t - int(now_time * cfg["SaveTime"]), now_time, '{} 秒后缩圈', 'green')
         elif t in range(6, int(now_time * cfg["SaveTime"])):
-            infoUpdata(server)
+            if t == (int(now_time * cfg["SaveTime"]) - 1):
+                server.execute(f'worldborder set {next_size} {now_time - int(now_time * cfg["SaveTime"])}')
             BossBar(server, t, now_time - int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
         elif t in range(1, 6):
             cb_tell(server, '还有 {} 秒互换')
@@ -175,9 +213,11 @@ def main(server: ServerInterface):
 
             now_round += 1
 
+            now_size = next_size
+
             n_min = int(now_size * cfg["NextSize"][0])
             n_max = int(now_size * cfg["NextSize"][1])
-            now_size = random.randint(n_min, n_max)
+            next_size = random.randint(n_min, n_max)
 
             now_time = int(now_time * cfg["NextTime"])
             t = now_time
@@ -190,8 +230,10 @@ def cb_tell(server: ServerInterface, msg):
 def death_message(server: ServerInterface, message):
     global playerList
     player = message.split(' ')[0]
-    cb_tell(server, f'玩家 {player} 出局')
-    playerList.remove(player)
+    if game_status:
+        if player in playerList:
+            cb_tell(server, f'玩家 {player} 出局')
+            playerList.remove(player)
 
 
 def config(mode, js=None):
