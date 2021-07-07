@@ -40,7 +40,6 @@ after = []
 '''
 !!CB 显示本消息 --
 !!CB start 开始游戏 -- 
-!!CB options 显示可选选项 
 !!CB status 显示游戏状态 --
 !!CB stop 强制停止当前游戏 --
 !!CB set [选项]来设置各种选项 
@@ -72,6 +71,7 @@ def game_stoped(server: ServerInterface):
     server.execute('bossbar remove minecraft:battle')
     server.execute(f'execute in minecraft:overworld run worldborder set 1000000 0')
     server.execute(f'execute in minecraft:the_nether run worldborder set 1000000 0')
+    server.execute('difficulty peaceful')
 
 
 def infoUpdata(server, game_time, center, rounds, left_time, left_players, size):
@@ -206,6 +206,8 @@ def main(server: ServerInterface):
     server.execute(f'scoreboard players set centerX vars {x}')
     server.execute(f'scoreboard players set centerZ vars {z}')
 
+    server.execute('difficulty hard')
+
     now_size = cfg["Size"]
     now_time = cfg["Time"]
     now_round = 1
@@ -224,6 +226,7 @@ def main(server: ServerInterface):
             continue
         t -= 1
         infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList), now_size)
+        server.execute('execute as @a run function dancingsnow:main')
         if t in range(int(now_time * (1 - cfg["SaveTime"])), now_time):
             BossBar(server, t - int(now_time * (1 - cfg["SaveTime"])), int(now_time * cfg["SaveTime"]), '{} 秒后缩圈',
                     'green')
@@ -250,6 +253,13 @@ def main(server: ServerInterface):
             next_size = random.randint(n_min, n_max)
             now_time = int(now_time * cfg["NextTime"])
             t = now_time
+        if len(playerList) <= 1:
+            game_status = False
+
+    cb_tell(server, '游戏结束')
+    cb_tell(server, f'玩家 {playerList[0]} 获得胜利')
+    game_status = False
+    game_stoped(server)
 
 
 def cb_tell(server: ServerInterface, msg):
@@ -301,8 +311,151 @@ def status(Source: CommandSource):
 
 
 def print_help_msg(Source: CommandSource):
-    Source.reply(
-        RText('Test').set_color(RColor.aqua).set_hover_text('单击执行').set_click_event(RAction.run_command, '!!CB'))
+    server = Source.get_server()
+    Source.reply(f'=========§e{PLUGIN_METADATA["name"]}§r=========')
+    text = [
+        {
+            "text": f"{prefix} ",
+            "color": "gray"
+        },
+        {
+            "text": "显示本条帮助信息 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix}"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} start ",
+            "color": "gray"
+        },
+        {
+            "text": "开始游戏 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} start"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} set ",
+            "color": "gray"
+        },
+        {
+            "text": "设置各种选项 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} set"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} status ",
+            "color": "gray"
+        },
+        {
+            "text": "显示游戏状态 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} status"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} stop ",
+            "color": "gray"
+        },
+        {
+            "text": "强制停止当前游戏 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} stop"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} reload ",
+            "color": "gray"
+        },
+        {
+            "text": "重载配置文件 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} reload"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
 
 
 @new_thread('ChangeBattle')
@@ -354,8 +507,6 @@ def confirm(Source: CommandSource):
         cb_tell(server, '游戏开始')
         game_status = True
         main(server)
-        confirm_statu = False
-        game_stoped(server)
     else:
         cb_tell(server, '游戏还未准备')
 
@@ -763,11 +914,27 @@ def on_load(server: ServerInterface, old):
     server.register_help_message(prefix, 'Change Battle 帮助')
     server.register_event_listener('more_apis.death_message', death_message)
     register_command(server)
-    server.execute('team add ChangeBattle')
-    server.execute('team modify ChangeBattle color gold')
-    server.execute('team modify ChangeBattle nametagVisibility never')
 
 
 def on_player_joined(server: ServerInterface, player: str, info: Info):
     server.execute(f'team join ChangeBattle {player}')
+    if game_status and player in playerList:
+        server.execute(f'gamemode spectator {player}')
+
+
+def on_server_startup(server: ServerInterface):
+    server.execute('team add ChangeBattle')
+    server.execute('team modify ChangeBattle color gold')
+    server.execute('team modify ChangeBattle nametagVisibility never')
+    server.execute('difficulty peaceful')
+
+
+def on_player_left(server: ServerInterface, player: str):
+    global playerList
+    global game_status
+    if player in playerList:
+        playerList.remove(player)
+        server.say(f'{player} 已被踢出游戏')
+    if len(playerList) <= 1:
+        game_status == False
 
