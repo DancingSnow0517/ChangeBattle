@@ -28,13 +28,14 @@ dim_convert = {
 }
 
 prefix = '!!CB'
-ConfigFile = 'config/ChangeBattle.json'
+ConfigFile = 'config/ChangeBattle/ChangeBattle.json'
 cfg = {}
 confirm_statu = False
 
 game_status = False
 now_round = 0
 playerList = []
+
 Last_info = []
 after = []
 '''
@@ -45,6 +46,7 @@ after = []
 !!CB set [选项]来设置各种选项 
 !!CB reload 重载配置文件 --
 !!CB team 队伍模式 ++
+!!CB sp
 '''
 
 default_config = {
@@ -64,6 +66,9 @@ default_config = {
         'reload': 2
     }
 }
+
+if not os.path.exists('config/ChangeBattle'):
+    os.mkdir('config/ChangeBattle')
 
 
 def game_stoped(server: ServerInterface):
@@ -193,8 +198,8 @@ def main(server: ServerInterface):
 
     # 世界初始化
     if cfg["RandomCenter"]:
-        x = random.randint(-100000, 100000)
-        z = random.randint(-100000, 100000)
+        x = random.randint(-1000000, 1000000)
+        z = random.randint(-1000000, 1000000)
     else:
         x = cfg["Center"][0]
         z = cfg["Center"][1]
@@ -207,6 +212,7 @@ def main(server: ServerInterface):
     server.execute(f'scoreboard players set centerZ vars {z}')
 
     server.execute('difficulty hard')
+    server.execute('time set day')
 
     now_size = cfg["Size"]
     now_time = cfg["Time"]
@@ -223,7 +229,10 @@ def main(server: ServerInterface):
         time.sleep(1)
         if now_size <= 128:
             server.execute('effect give @a minecraft:glowing 20')
+            infoUpdata(server, time.time() - game_start_time, [x, z], now_round, '∞', len(playerList), now_size)
             continue
+        if now_time <= 30:
+            now_time = 30
         t -= 1
         infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList), now_size)
         server.execute('execute as @a run function dancingsnow:main')
@@ -253,13 +262,6 @@ def main(server: ServerInterface):
             next_size = random.randint(n_min, n_max)
             now_time = int(now_time * cfg["NextTime"])
             t = now_time
-        if len(playerList) <= 1:
-            game_status = False
-
-    cb_tell(server, '游戏结束')
-    cb_tell(server, f'玩家 {playerList[0]} 获得胜利')
-    game_status = False
-    game_stoped(server)
 
 
 def cb_tell(server: ServerInterface, msg):
@@ -271,15 +273,7 @@ def death_message(server: ServerInterface, message):
     global game_status
     player = message.split(' ')[0]
     if game_status:
-        if player in playerList:
-            cb_tell(server, f'玩家 {player} 出局')
-            playerList.remove(player)
-            server.execute(f'gamemode spectator {player}')
-        if len(playerList) <= 1:
-            cb_tell(server, '游戏结束')
-            cb_tell(server, f'玩家 {playerList[0]} 获得胜利')
-            game_status = False
-            game_stoped(server)
+        remove_player(server, player)
 
 
 def config(mode, js=None):
@@ -294,6 +288,14 @@ def config(mode, js=None):
     elif mode == 'w' and js is not None:
         with open(ConfigFile, 'w', encoding='utf-8') as f:
             json.dump(js, f, indent=4)
+
+
+def remove_player(server: ServerInterface, player):
+    global playerList
+    if player in playerList:
+        playerList.remove(player)
+    if len(playerList) <= 1:
+        server.execute('execute at {playerList[0]} run summon minecraft:firework_rocket ~ ~5 ~ ')
 
 
 def status(Source: CommandSource):
@@ -859,7 +861,7 @@ def setSaveTime(Source: CommandSource, msg):
     global cfg
     cfg["SaveTime"] = msg["SaveTime"]
     config('w', cfg)
-    Source.reply(f'安全时间已设置为 §b[{cfg["NextTime"]}]')
+    Source.reply(f'安全时间已设置为 §b[{cfg["SaveTime"]}]')
 
 
 def setRandomCenter(Source: CommandSource, msg):
@@ -891,10 +893,10 @@ def register_command(server: ServerInterface):
             then(get_literal_node('status').runs(status)).
             then(get_literal_node('set').runs(options).
                  then(Literal('Center').
-                      then(Integer('centerX').
-                           then(Integer('centerZ').runs(setCenter)))).
+                      then(Integer('centerX').in_range(-1000000, 1000000).
+                           then(Integer('centerZ').in_range(-1000000, 1000000).runs(setCenter)))).
                  then(Literal('Size').
-                      then(Integer('Size').runs(setSize))).
+                      then(Integer('Size').in_range(0, 100000).runs(setSize))).
                  then(Literal('NextSize').
                       then(Float('Next_min').at_max(1).at_min(0).
                            then(Float('Next_max').at_max(1).at_min(0).runs(setNextSize)))).
@@ -918,7 +920,7 @@ def on_load(server: ServerInterface, old):
 
 def on_player_joined(server: ServerInterface, player: str, info: Info):
     server.execute(f'team join ChangeBattle {player}')
-    if game_status and player in playerList:
+    if game_status:
         server.execute(f'gamemode spectator {player}')
 
 
@@ -932,9 +934,4 @@ def on_server_startup(server: ServerInterface):
 def on_player_left(server: ServerInterface, player: str):
     global playerList
     global game_status
-    if player in playerList:
-        playerList.remove(player)
-        server.say(f'{player} 已被踢出游戏')
-    if len(playerList) <= 1:
-        game_status == False
-
+    remove_player(server, player)
