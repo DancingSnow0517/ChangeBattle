@@ -233,18 +233,18 @@ def main(server: ServerInterface):
     Last_info = [0, 1, 2, 3, 4, 5]
     while game_status:
         time.sleep(1)
-        if now_size <= 128:
-            server.execute('effect give @a[tag=!spectator] minecraft:glowing 20')
+        if now_size <= 64:
+            server.execute('effect give @a[tag=!spectator] minecraft:glowing 3')
+            BossBar(server, 1, 1, '∞ 秒后交换', 'yellow')
             infoUpdata(server, time.time() - game_start_time, [x, z], now_round, '∞', len(playerList), int(real_size))
             continue
-        if now_time <= 30:
-            now_time = 30
         t -= 1
         infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList), int(real_size))
         server.execute('execute as @a[tag=!spectator] run function dancingsnow:main')
 
         if t <= now_time * (1 - cfg["SaveTime"]):
-            real_size = now_size - (now_time * (1 - cfg["SaveTime"] - t))
+            real_size = now_size - (now_size - next_size) / (now_time * (1 - cfg["SaveTime"])) * (
+                        now_time * (1 - cfg["SaveTime"]) - t)
 
         if t in range(int(now_time * (1 - cfg["SaveTime"])), now_time):
             BossBar(server, t - int(now_time * (1 - cfg["SaveTime"])), int(now_time * cfg["SaveTime"]), '{} 秒后缩圈',
@@ -257,7 +257,7 @@ def main(server: ServerInterface):
                     f'execute in minecraft:the_nether run worldborder set {int(next_size / 8)} {now_time - int(now_time * cfg["SaveTime"])}')
             BossBar(server, t, int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
         elif t in range(1, 6):
-            cb_tell(server, '还有 {} 秒互换')
+            cb_tell(server, f'还有 {t} 秒互换')
             BossBar(server, t, int(now_time * cfg["SaveTime"]), '{} 秒后进行交换', 'red')
             server.execute(
                 'execute at @a[tag=!spectator] run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 0.5')
@@ -273,6 +273,8 @@ def main(server: ServerInterface):
             n_max = int(now_size * cfg["NextSize"][1])
             next_size = random.randint(n_min, n_max)
             now_time = int(now_time * cfg["NextTime"])
+            if now_time <= 30:
+                now_time = 30
             t = now_time
         if len(playerList) <= 1:
             game_status = False
@@ -606,7 +608,7 @@ def options(Source: CommandSource):
             "text": "[✎]",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set Center <X> <Z>"
+                "value": f"{prefix} set Center"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -625,7 +627,7 @@ def options(Source: CommandSource):
             "text": "[✎] ",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set Size <size>"
+                "value": f"{prefix} set Size"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -692,7 +694,7 @@ def options(Source: CommandSource):
             "text": "[✎]",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set NextSize <min> <max>"
+                "value": f"{prefix} set NextSize"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -718,7 +720,7 @@ def options(Source: CommandSource):
             "text": "[✎] ",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set Time <time>"
+                "value": f"{prefix} set Time"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -773,7 +775,7 @@ def options(Source: CommandSource):
             "text": "[✎]",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set NextTime <NextTime>"
+                "value": f"{prefix} set NextTime"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -799,7 +801,7 @@ def options(Source: CommandSource):
             "text": "[✎]",
             "clickEvent": {
                 "action": "suggest_command",
-                "value": f"{prefix} set SaveTime <SaveTime>"
+                "value": f"{prefix} set SaveTime"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -1037,7 +1039,8 @@ def register_command(server: ServerInterface):
                       then(Text('RandomCenter').runs(setRandomCenter)))).
             then(get_literal_node('spectator').runs(spectator).
                  then(Literal('join').runs(s_join)).
-                 then(Literal('leave').runs(s_leave))))
+                 then(Literal('leave').runs(s_leave))).
+            then(Literal('test').runs(lambda src: main(src.get_server()))))
 
 
 def on_load(server: ServerInterface, old):
@@ -1052,7 +1055,7 @@ def on_load(server: ServerInterface, old):
 
 def on_player_joined(server: ServerInterface, player: str, info: Info):
     server.execute(f'team join ChangeBattle {player}')
-    if game_status:
+    if game_status or (player in spectator_list):
         server.execute(f'gamemode spectator {player}')
 
 
