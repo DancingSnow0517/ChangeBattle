@@ -934,8 +934,54 @@ def setRandomCenter(Source: CommandSource, msg):
 
 
 def spectator(Source: CommandSource):
-    Source.reply('!!CB spectator join 加入旁观模式')
-    Source.reply('!!CB spectator leave 退出旁观模式')
+    server = Source.get_server()
+    text = [
+        {
+            "text": f"{prefix} spectator join ",
+            "color": "gray"
+        },
+        {
+            "text": "加入旁观模式 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} spectator join"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} spectator leave ",
+            "color": "gray"
+        },
+        {
+            "text": "离开旁观模式 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} spectator leave"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
 
 
 def s_join(Source: PlayerCommandSource):
