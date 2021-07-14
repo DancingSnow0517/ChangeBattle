@@ -4,6 +4,7 @@ import json
 import time
 import random
 import copy
+from math import sqrt
 
 PLUGIN_METADATA = {
     'id': 'changebattle',
@@ -29,16 +30,19 @@ dim_convert = {
 
 prefix = '!!CB'
 ConfigFile = 'config/ChangeBattle/ChangeBattle.json'
-SpectatorFile = 'config/ChangeBattle/spectator.json'
+featureFile = 'config/ChangeBattle/feature.json'
 cfg = {}
 confirm_statu = False
 
 game_status = False
 now_round = 0
 playerList = []
-spectator_list = []
+features_list = {}
 Last_info = []
 after = []
+t = 0
+game_start_time = 0
+now_time = 0
 '''
 !!CB 显示本消息 --
 !!CB start 开始游戏 -- 
@@ -48,6 +52,7 @@ after = []
 !!CB reload 重载配置文件 --
 !!CB team 队伍模式 ++
 !!CB spectator 
+!!CB feature
 /tag DancingSnow add spectator
 '''
 
@@ -66,12 +71,17 @@ default_config = {
         'stop': 3,
         'set': 2,
         'reload': 2,
-        'spectator': 0
+        'spectator': 0,
+        'feature': 0
     }
 }
 
 if not os.path.exists('config/ChangeBattle'):
     os.mkdir('config/ChangeBattle')
+
+
+def distance(a, b):
+    return sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2)
 
 
 def game_stoped(server: ServerInterface):
@@ -80,6 +90,7 @@ def game_stoped(server: ServerInterface):
     server.execute(f'execute in minecraft:overworld run worldborder set 1000000 0')
     server.execute(f'execute in minecraft:the_nether run worldborder set 1000000 0')
     server.execute('difficulty peaceful')
+    server.execute('gamemode adventure @a[tag=!spectator]')
 
 
 def infoUpdata(server, game_time, center, rounds, left_time, left_players, size):
@@ -91,7 +102,7 @@ def infoUpdata(server, game_time, center, rounds, left_time, left_players, size)
     边界大小
     目前是第{rounds}回合
     距离下次交换还有{left_time}秒
-    还有{left_players}名玩家存活
+    还有{left_players}名玩家存活 
     """
     for i in range(6):
         if i == 5:
@@ -172,12 +183,38 @@ def BossBar(server: ServerInterface, Left_time, Max_time, text, color):
     server.execute(f'bossbar set minecraft:battle value {Left_time}')
 
 
+def resetCenter(server):
+    pos = {}
+    api = server.get_plugin_instance('minecraft_data_api')
+    for i in playerList:
+        pos[i] = {}
+        pos[i]["pos"] = api.get_player_coordinate(i)
+        pos[i]["dim"] = api.get_player_dimension(i)
+    for i in playerList:
+        min = 1000000000
+        p = None
+        for j in playerList:
+            if i != j:
+                d = distance([pos[i]["pos"][0], pos[i]["pos"][1], pos[i]["pos"][2]], [pos[j]["pos"][0], pos[j]["pos"][1], pos[j]["pos"][2]])
+                if d < min:
+                    min = d
+                    p = j
+            if p is not None:
+                server.say(f'{p} 离你最近，{min}格')
+                server.execute(f'scoreboard players set {i} CenterX {pos[j]["pos"][0]}')
+                server.execute(f'scoreboard players set {i} CenterZ {pos[j]["pos"][0]}')
+
+
 @new_thread('ChangeBattle')
 def main(server: ServerInterface):
     global game_status
     global now_round
     global Last_info
+    global t
+    global game_start_time
+    global now_time
     # 玩家初始化
+    # game_status = True
     server.execute('clear @a[tag=!spectator]')
     server.execute(
         'give @a[tag=!spectator] minecraft:stone_sword{Enchantments:[{id:"minecraft:unbreaking",lvl:1}]} 1')
@@ -211,12 +248,13 @@ def main(server: ServerInterface):
     server.execute(f'execute in minecraft:overworld run worldborder center {x} {z}')
     server.execute(f'execute in minecraft:the_nether run worldborder center {x} {z}')
     server.execute('execute in minecraft:overworld as @a[tag=!spectator] run tp 0 100 0')
-    server.execute(f'spreadplayers {x} {z} {cfg["Size"] * 0.25} {cfg["Size"] * 0.45} false @a[tag=!spectator]')
+    server.execute(f'spreadplayers {x} {z} {cfg["Size"] * 0.25} {cfg["Size"] * 0.45} under 0 false @a[tag=!spectator]')
 
     server.execute(f'scoreboard players set centerX vars {x}')
     server.execute(f'scoreboard players set centerZ vars {z}')
 
     server.execute('difficulty hard')
+    server.execute('gamerule doMobSpawning false')
     server.execute('time set day')
 
     now_size = cfg["Size"]
@@ -237,14 +275,15 @@ def main(server: ServerInterface):
             server.execute('effect give @a[tag=!spectator] minecraft:glowing 3')
             BossBar(server, 1, 1, '∞ 秒后交换', 'yellow')
             infoUpdata(server, time.time() - game_start_time, [x, z], now_round, '∞', len(playerList), int(real_size))
+            resetCenter(server)
             continue
         t -= 1
         infoUpdata(server, time.time() - game_start_time, [x, z], now_round, t, len(playerList), int(real_size))
-        server.execute('execute as @a[tag=!spectator] run function dancingsnow:main')
+        server.execute('execute as @a[tag=!spectator,tag=pos] run function dancingsnow:main')
 
         if t <= now_time * (1 - cfg["SaveTime"]):
             real_size = now_size - (now_size - next_size) / (now_time * (1 - cfg["SaveTime"])) * (
-                        now_time * (1 - cfg["SaveTime"]) - t)
+                    now_time * (1 - cfg["SaveTime"]) - t)
 
         if t in range(int(now_time * (1 - cfg["SaveTime"])), now_time):
             BossBar(server, t - int(now_time * (1 - cfg["SaveTime"])), int(now_time * cfg["SaveTime"]), '{} 秒后缩圈',
@@ -267,6 +306,7 @@ def main(server: ServerInterface):
             server.execute(
                 'execute at @a[tag=!spectator] run playsound minecraft:entity.arrow.hit_player player @p ~ ~ ~ 1 1')
             change(server)
+            server.execute('gamerule doMobSpawning true')
             now_round += 1
             now_size = next_size
             n_min = int(now_size * cfg["NextSize"][0])
@@ -291,6 +331,7 @@ def death_message(server: ServerInterface, message):
     player = message.split(' ')[0]
     if game_status:
         remove_player(server, player)
+    server.execute(f'gamemode spectator {player}')
 
 
 def config(mode, js=None):
@@ -307,17 +348,17 @@ def config(mode, js=None):
             json.dump(js, f, indent=4)
 
 
-def s_config(mode, js=None):
+def feature_config(mode, js=None):
     if mode == 'r':
-        if not os.path.exists(SpectatorFile):
-            with open(SpectatorFile, 'w', encoding='utf-8') as f:
-                json.dump([], f, indent=4)
-                return SpectatorFile
+        if not os.path.exists(featureFile):
+            with open(featureFile, 'w', encoding='utf-8') as f:
+                json.dump({"spectator": [], "damage": []}, f, indent=4)
+                return {"spectator": [], "damage": []}
         else:
-            with open(SpectatorFile, 'r', encoding='utf-8') as f:
+            with open(featureFile, 'r', encoding='utf-8') as f:
                 return json.load(f)
     elif mode == 'w' and js is not None:
-        with open(SpectatorFile, 'w', encoding='utf-8') as f:
+        with open(featureFile, 'w', encoding='utf-8') as f:
             json.dump(js, f, indent=4)
 
 
@@ -325,6 +366,9 @@ def remove_player(server: ServerInterface, player):
     global playerList
     if player in playerList:
         playerList.remove(player)
+    if len(playerList) <= 1:
+        cb_tell(server, '游戏结束')
+        cb_tell(server, f'{playerList[0]} 获胜')
 
 
 def status(Source: CommandSource):
@@ -332,13 +376,19 @@ def status(Source: CommandSource):
     if not game_status:
         cb_tell(server, '游戏未运行')
         return
-    alive = ''
-    for i in playerList:
-        alive += f'{i}, '
-    cb_tell(server, '=====Change Battle status=====')
-    server.say(alive)
-    server.say(f'共 {len(playerList)} 人存活')
-    server.say(f'目前是第 {now_round} 个圈')
+    Source.reply('========§eChange Battle status§r========')
+    Source.reply(f'共 §b{len(playerList)}§r 人存活')
+    Source.reply(f'游戏已运行 §b{int(time.time() - game_start_time)}§r 秒')
+    Source.reply(f'目前是第 §b{now_round}§r 回合')
+    num = int(90 * t / now_time)
+    text = [{"text": "[", "color": "gray"}]
+    for i in range(89 - num):
+        text.append({"text": "|", "color": "green"})
+    text.append({"text": "|", "color": "light_purple"})
+    for i in range(num):
+        text.append({"text": "|", "color": "dark_aqua"})
+    text.append({"text": "]", "color": "gray"})
+    server.execute(f'tellraw {Source.player} {json.dumps(text)}')
 
 
 def print_help_msg(Source: CommandSource):
@@ -490,18 +540,18 @@ def print_help_msg(Source: CommandSource):
 
     text = [
         {
-            "text": f"{prefix} spectator ",
+            "text": f"{prefix} feature ",
             "color": "gray"
         },
         {
-            "text": "加入旁观模式 ",
+            "text": "查看功能开关 ",
             "color": "white"
         },
         {
             "text": "[▶]",
             "clickEvent": {
                 "action": "run_command",
-                "value": f"{prefix} spectator"
+                "value": f"{prefix} feature"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -525,7 +575,7 @@ def start(Source: CommandSource):
         cb_tell(server, '准备开始游戏')
         api = server.get_plugin_instance('minecraft_data_api')
         amount, limit, playerList = api.get_server_player_list()
-        for i in spectator_list:
+        for i in features_list["spectator"]:
             if i in playerList:
                 playerList.remove(i)
                 amount -= 1
@@ -939,7 +989,7 @@ def spectator(Source: CommandSource):
     server = Source.get_server()
     text = [
         {
-            "text": f"{prefix} spectator join ",
+            "text": f"{prefix} feature spectator join ",
             "color": "gray"
         },
         {
@@ -950,7 +1000,7 @@ def spectator(Source: CommandSource):
             "text": "[▶]",
             "clickEvent": {
                 "action": "run_command",
-                "value": f"{prefix} spectator join"
+                "value": f"{prefix} feature spectator join"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -963,7 +1013,7 @@ def spectator(Source: CommandSource):
 
     text = [
         {
-            "text": f"{prefix} spectator leave ",
+            "text": f"{prefix} feature spectator leave ",
             "color": "gray"
         },
         {
@@ -974,7 +1024,7 @@ def spectator(Source: CommandSource):
             "text": "[▶]",
             "clickEvent": {
                 "action": "run_command",
-                "value": f"{prefix} spectator leave"
+                "value": f"{prefix} feature spectator leave"
             },
             "hoverEvent": {
                 "action": "show_text",
@@ -987,24 +1037,255 @@ def spectator(Source: CommandSource):
 
 
 def s_join(Source: PlayerCommandSource):
-    global spectator_list
+    global features_list
     server = Source.get_server()
     player = Source.player
     server.execute(f'tag {player} add spectator')
     server.execute(f'gamemode spectator {player}')
-    if not (player in spectator_list):
-        spectator_list.append(player)
-    s_config('w', spectator_list)
+    if not (player in features_list["spectator"]):
+        features_list["spectator"].append(player)
+    feature_config('w', features_list)
 
 
 def s_leave(Source: PlayerCommandSource):
-    global spectator_list
+    global features_list
     server = Source.get_server()
     player = Source.player
     server.execute(f'tag {player} remove spectator')
-    if player in spectator_list:
-        spectator_list.remove(player)
-    s_config('w', spectator_list)
+    if player in features_list["spectator"]:
+        features_list["spectator"].remove(player)
+    feature_config('w', features_list)
+    server.execute(f'gamemode adventure {player}')
+
+
+def feature(Source: CommandSource):
+    """
+    pos 显示坐标并给出箭头指向中心
+    damage 显示受到/造成的伤害
+    spectator 观战模式
+    """
+    player = Source.player
+    server = Source.get_server()
+
+    text = [
+        {
+            "text": f"{prefix} feature spectator ",
+            "color": "gray"
+        },
+        {
+            "text": "旁观模式开关 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature spectator"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} feature damage ",
+            "color": "gray"
+        },
+        {
+            "text": "受到/造成 伤害显示开关 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature damage"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} feature pos ",
+            "color": "gray"
+        },
+        {
+            "text": "设置坐标显示并指出中心方向 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature pos"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+
+def damage(Source: CommandSource):
+    player = Source.player
+    server = Source.get_server()
+    text = [
+        {
+            "text": f"{prefix} feature damage on ",
+            "color": "gray"
+        },
+        {
+            "text": "打开伤害显示 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature damage on"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} feature damage off ",
+            "color": "gray"
+        },
+        {
+            "text": "关闭伤害显示 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature damage off"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+
+def damage_on(Source: CommandSource):
+    global features_list
+    player = Source.player
+    server = Source.get_server()
+    server.execute(f'tag {player} add damage')
+    if not (player in features_list["damage"]):
+        features_list["damage"].append(player)
+    feature_config('w', features_list)
+
+
+def damage_off(Source: CommandSource):
+    server = Source.get_server()
+    player = Source.player
+    server.execute(f'tag {player} remove damage')
+    if player in features_list["damage"]:
+        features_list["damage"].remove(player)
+    feature_config('w', features_list)
+
+
+def pos(Source: CommandSource):
+    server = Source.get_server()
+    player = Source.player
+    text = [
+        {
+            "text": f"{prefix} feature pos on ",
+            "color": "gray"
+        },
+        {
+            "text": "打开坐标显示并指出中心方向 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature pos on"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+    text = [
+        {
+            "text": f"{prefix} feature pos off ",
+            "color": "gray"
+        },
+        {
+            "text": "关闭坐标显示并指出中心方向 ",
+            "color": "white"
+        },
+        {
+            "text": "[▶]",
+            "clickEvent": {
+                "action": "run_command",
+                "value": f"{prefix} feature pos off"
+            },
+            "hoverEvent": {
+                "action": "show_text",
+                "value": "单击执行"
+            },
+            "color": "green"
+        }
+    ]
+    server.execute(f'tellraw {player} {json.dumps(text)}')
+
+
+def pos_on(Source: CommandSource):
+    global features_list
+    player = Source.player
+    server = Source.get_server()
+    server.execute(f'tag {player} add pos')
+    if not (player in features_list["pos"]):
+        features_list["pos"].append(player)
+    feature_config('w', features_list)
+
+
+def pos_off(Source: CommandSource):
+    server = Source.get_server()
+    player = Source.player
+    server.execute(f'tag {player} remove pos')
+    if player in features_list["pos"]:
+        features_list["pos"].remove(player)
+    feature_config('w', features_list)
+
+
+def dis(Source: CommandSource, msg):
+    a = [msg["ax"], msg["ay"], msg["az"]]
+    b = [msg["bx"], msg["by"], msg["bz"]]
+    Source.reply(distance(a, b))
 
 
 def register_command(server: ServerInterface):
@@ -1037,17 +1318,31 @@ def register_command(server: ServerInterface):
                       then(Float('SaveTime').at_min(0).at_max(1).runs(setSaveTime))).
                  then(Literal('RandomCenter').
                       then(Text('RandomCenter').runs(setRandomCenter)))).
-            then(get_literal_node('spectator').runs(spectator).
-                 then(Literal('join').runs(s_join)).
-                 then(Literal('leave').runs(s_leave))).
-            then(Literal('test').runs(lambda src: main(src.get_server()))))
+            then(get_literal_node('feature').runs(feature).
+                 then(Literal('spectator').runs(spectator).
+                      then(Literal('join').runs(s_join)).
+                      then(Literal('leave').runs(s_leave))).
+                 then(Literal('damage').runs(damage).
+                      then(Literal('on').runs(damage_on)).
+                      then(Literal('off').runs(damage_off))).
+                 then(Literal('pos').runs(pos).
+                      then(Literal('on').runs(pos_on)).
+                      then(Literal('off').runs(pos_off)))).
+            then(Literal('test').runs(lambda src: main(src.get_server()))).
+            then(Literal('dis').
+                 then(Float('ax').
+                      then(Float('ay').
+                           then(Float('az').
+                                then(Float('bx').
+                                     then(Float('by').
+                                          then(Float('bz').runs(dis)))))))))
 
 
 def on_load(server: ServerInterface, old):
     global cfg
-    global spectator_list
+    global features_list
     cfg = config('r')
-    spectator_list = s_config('r')
+    features_list = feature_config('r')
     server.register_help_message(prefix, 'Change Battle 帮助')
     server.register_event_listener('more_apis.death_message', death_message)
     register_command(server)
@@ -1055,7 +1350,7 @@ def on_load(server: ServerInterface, old):
 
 def on_player_joined(server: ServerInterface, player: str, info: Info):
     server.execute(f'team join ChangeBattle {player}')
-    if game_status or (player in spectator_list):
+    if game_status or (player in features_list["spectator"]):
         server.execute(f'gamemode spectator {player}')
 
 
